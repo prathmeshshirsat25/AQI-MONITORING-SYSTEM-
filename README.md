@@ -1,126 +1,148 @@
 # Precision AQI Monitoring and Prediction System
 
-## Overview
+## Project Overview
 
-Precision AQI Monitoring and Prediction System is a software focused IoT solution designed for real time air quality analysis, intelligent data processing, predictive monitoring, and smart alert generation. The project emphasizes reliable software architecture and efficient sensor data handling to improve the accuracy and scalability of low cost AQI monitoring systems.
+Precision AQI Monitoring and Prediction System is a software focused IoT solution developed for real time air quality monitoring, intelligent AQI calculation, predictive analysis, and automated alert generation. The system combines embedded programming, sensor data processing, and software based filtering techniques to improve monitoring accuracy while maintaining a low cost architecture.
 
-The system continuously collects environmental data from multiple sensors and processes it through a custom built software pipeline. A major focus of the project was improving data reliability through advanced filtering and processing techniques instead of relying only on expensive hardware solutions.
-
-One of the key achievements was reducing the overall system cost to nearly one tenth of traditional AQI monitoring systems while still achieving approximately 94 percent accuracy using a custom developed 5 layer software filtering algorithm.
+The project continuously collects environmental data using multiple sensors and processes the readings through a custom built filtering pipeline to reduce noisy values and improve reliability. A major focus of the implementation was software optimization and data accuracy enhancement instead of relying solely on expensive hardware.
 
 ---
 
-# Core Software Features
+# Features
 
-* Real time sensor data processing
-* AQI calculation and monitoring logic
-* Predictive analysis for AQI trends
-* Smart threshold based alert generation
-* Custom 5 layer software filtering pipeline
-* Continuous data acquisition and handling
-* Noise reduction and abnormal value elimination
-* Efficient IoT based monitoring architecture
-* Scalable and modular software design
+* Real time AQI monitoring
+* Multi sensor data acquisition
+* Smart AQI prediction and analysis
+* Automated SMS alert system
+* Dynamic sensor calibration
+* Temperature and humidity compensation
+* Multi level software based filtering
+* Real time LCD monitoring interface
+* Cost optimized IoT architecture
+
+---
+
+# Sensors and Modules Used
+
+| Component        | Purpose                          |
+| ---------------- | -------------------------------- |
+| MQ 7 Sensor      | Carbon Monoxide detection        |
+| MQ 135 Sensor    | VOC and air quality sensing      |
+| GP2Y Dust Sensor | PM concentration monitoring      |
+| DHT11            | Temperature and humidity sensing |
+| GSM Module       | SMS alert notifications          |
+| LCD Display      | Real time data visualization     |
+| Arduino          | Embedded processing and control  |
 
 ---
 
 # Software Architecture
 
-The system software follows the following workflow:
+## 1. Sensor Data Acquisition
 
-1. Sensor data acquisition from environmental sensors
-2. Real time preprocessing of raw sensor readings
-3. Multi stage filtering and validation pipeline
-4. AQI computation and data normalization
-5. Predictive analysis and trend estimation
-6. Alert generation based on AQI thresholds
-7. Continuous monitoring and output display
+The system continuously collects analog sensor readings from PM, CO, and VOC sensors while also monitoring environmental conditions such as temperature and humidity.
+
+## 2. Dynamic Calibration System
+
+Implemented automatic sensor calibration during startup to establish environment specific baseline resistance values for MQ sensors. This improves reliability across different deployment environments.
+
+## 3. Multi Stage Filtering Pipeline
+
+Designed a custom 5 layer filtering mechanism for improving data precision and reducing unstable sensor outputs.
+
+### Filtering Techniques Used
+
+* Rapid sample averaging
+* Heavy software smoothing
+* Voltage spike protection
+* Environmental compensation
+* Signal stabilization
+
+This filtering architecture significantly reduced noisy readings and improved overall monitoring accuracy to approximately 94 percent.
+
+## 4. AQI Computation Engine
+
+Implemented AQI calculation logic using EPA based breakpoint conversions for:
+
+* PM2.5 concentration
+* Carbon Monoxide levels
+* VOC concentration
+
+The final AQI value is generated using the highest pollutant impact method.
+
+## 5. Predictive Monitoring and Alerts
+
+The software continuously evaluates AQI trends and automatically triggers SMS alerts whenever air quality crosses predefined safety thresholds.
+
+## 6. Real Time Display System
+
+Designed a dual screen LCD interface for displaying:
+
+* AQI status
+* Pollutant concentration
+* Temperature and humidity
+* Sensor calibration values
 
 ---
 
-# Major Software Components
+# Key Software Concepts Implemented
 
-## Real Time Data Processing
+* Embedded C programming
+* Real time sensor processing
+* Data filtering algorithms
+* Signal smoothing techniques
+* Environmental compensation logic
+* AQI computation models
+* Serial communication
+* GSM based notifications
+* IoT monitoring workflows
 
-Designed software modules for continuous acquisition and handling of sensor data streams to ensure stable and efficient monitoring.
+---
 
-## AQI Computation Engine
+# Performance Improvements
 
-Implemented AQI calculation logic to convert raw environmental sensor values into meaningful air quality metrics.
+| Optimization               | Impact                           |
+| -------------------------- | -------------------------------- |
+| 10 sample averaging        | Reduced random fluctuations      |
+| Heavy smoothing algorithm  | Improved reading stability       |
+| Dynamic Ro calibration     | Better environmental adaptation  |
+| Voltage spike protection   | Prevented invalid sensor outputs |
+| Temp humidity compensation | Improved sensor consistency      |
 
-## 5 Layer Filtering Algorithm
+---
 
-Developed a custom software filtering mechanism focused on improving data precision and system reliability. The filtering pipeline helped:
+# Achievements
 
-* Reduce noisy readings
-* Remove unstable fluctuations
-* Improve consistency of sensor outputs
-* Increase monitoring accuracy to nearly 94 percent
+* Reduced system cost to nearly one tenth of traditional solutions
+* Achieved approximately 94 percent monitoring accuracy
+* Built a custom software driven filtering pipeline
+* Selected among the Top 5 Finalists in INC
 
-## Predictive Monitoring
+---
 
-Implemented predictive analysis concepts to estimate future AQI trends based on historical and real time environmental data patterns.
+# Future Enhancements
 
-## Smart Alert System
-
-Designed threshold based software logic to trigger alerts whenever AQI levels exceeded safe environmental limits.
+* Cloud based monitoring dashboard
+* Machine learning based AQI prediction
+* Mobile application integration
+* Historical data analytics
+* Wireless IoT communication
+* Advanced anomaly detection
 
 ---
 
 # Technologies Used
 
-## Programming and Software
-
 * Embedded C
 * Arduino IDE
-* Sensor data processing
-* IoT communication concepts
-* Data filtering algorithms
-* Predictive analytics concepts
-
-## Hardware Integration
-
-* Microcontroller based system
-* Environmental sensors
-* AQI sensing modules
-
----
-
-# Key Achievements
-
-* Reduced system cost to nearly one tenth of existing solutions
-* Achieved approximately 94 percent monitoring accuracy
-* Built a custom 5 layer software filtering pipeline
-* Selected among the Top 5 Finalists in INC
-
----
-
-# Learning Outcomes
-
-Through this project I gained practical experience in:
-
-* Real time software development
-* Sensor data processing
-* Embedded programming
-* Predictive analysis
-* Software optimization
-* IoT system architecture
-* Problem solving and debugging
-* Team collaboration and project execution
-
----
-
-# Future Improvements
-
-* Machine learning based AQI prediction
-* Cloud based monitoring and analytics
-* Web dashboard for live visualization
-* Mobile application integration
-* Advanced anomaly detection algorithms
-* Scalable deployment for smart city applications
+* IoT Concepts
+* Sensor Data Processing
+* GSM Communication
+* AQI Computation Logic
+* Software Filtering Algorithms
 
 ---
 
 # Conclusion
 
-This project demonstrates how efficient software engineering and intelligent data processing can significantly improve the reliability and affordability of environmental monitoring systems. By focusing on filtering algorithms, predictive monitoring, and scalable software architecture, the system delivers accurate and meaningful AQI insights while remaining cost effective and practical for real world applications.
+This project demonstrates how intelligent software engineering and efficient data processing can significantly improve the reliability and affordability of environmental monitoring systems. By focusing on filtering algorithms, sensor optimization, and predictive monitoring, the system delivers accurate AQI insights while remaining scalable and cost effective for real world applications.
