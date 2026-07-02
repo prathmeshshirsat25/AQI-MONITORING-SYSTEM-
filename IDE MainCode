@@ -1,0 +1,247 @@
+#include <LiquidCrystal.h>
+#include <DHT.h>
+#include <SoftwareSerial.h>
+
+#define PMPIN A0
+#define COPIN A1
+#define VOCPIN A2
+#define LEDPIN 7
+#define DHTPIN 6
+
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+DHT dht(DHTPIN, DHT11);
+SoftwareSerial sim(10, 9);
+
+unsigned long prevMillis = 0;
+bool showSlide2 = false;
+String lastAqiLevel = "";
+String mobileNumber = "+919158229474"; 
+
+// Variables to store the smoothed readings
+float smoothPM = 0;
+float smoothCO = 0;
+float smoothVOC = 0;
+
+// Dynamic Baseline Variables
+float roCO = 5.8;  
+float roVOC = 1.6; 
+
+void setup() {
+  Serial.begin(9600);
+  lcd.begin(16, 4);
+  lcd.print(F("Precision AQI"));
+  lcd.setCursor(0, 1); lcd.print(F("Monitor Booting."));
+  lcd.setCursor(0, 2); lcd.print(F("Please wait..."));
+  
+  dht.begin();
+  sim.begin(9600);
+  pinMode(LEDPIN, OUTPUT);
+  delay(2000); 
+
+  // ----- AUTOMATIC SMART CALIBRATION -----
+  // Read clean air background and establish Ro constants exactly for this environment
+  lcd.clear();
+  lcd.print(F("Calibrating MQ..."));
+  lcd.setCursor(0, 1); lcd.print(F("Keep air clean."));
+  
+  float calcRoCO = 0;
+  float calcRoVOC = 0;
+  
+  // Sample 40 times to find the stable center point
+  for(int i = 0; i < 40; i++) {
+     // Cached analogRead avoids duplicate executions inside the Arduino max() macro
+     float aCO = analogRead(COPIN);
+     float aVOC = analogRead(VOCPIN);
+     
+     float vCO = (aCO * 5.0f) / 1024.0f;
+     float vVOC = (aVOC * 5.0f) / 1024.0f;
+     
+     if (vCO < 0.01f) vCO = 0.01f;
+     if (vVOC < 0.01f) vVOC = 0.01f;
+     
+     calcRoCO += (5.0f - vCO) / vCO;     // Rs for MQ-7
+     calcRoVOC += (5.0f - vVOC) / vVOC;  // Rs for MQ-135
+     delay(100);
+  }
+  
+  // Clean air Rs/Ro constants from datasheet curves:
+  float measuredRoCO = (calcRoCO / 40.0) / 26.0;   
+  float measuredRoVOC = (calcRoVOC / 40.0) / 3.6;  
+  
+  // Failsafe: If sensor was too cold (yielding a tiny Ro near 0), stick to defaults
+  if (measuredRoCO > 0.1 && measuredRoCO < 50.0) {
+      roCO = measuredRoCO;
+  }
+  if (measuredRoVOC > 0.1 && measuredRoVOC < 50.0) {
+      roVOC = measuredRoVOC;
+  }
+  
+  lcd.clear();
+  // ----------------------------------------
+}
+
+void sendSMS(int aqi, String level, String precaution) {
+  sim.println("AT+CMGF=1");
+  delay(200);
+  sim.print("AT+CMGS=\"");
+  sim.print(mobileNumber);
+  sim.println("\"");
+  delay(200);
+  sim.print("AQI: "); sim.println(aqi);
+  sim.print("Level: "); sim.println(level);
+  sim.print("Precaution: "); sim.println(precaution);
+  sim.write(26);
+  delay(1000);
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+  
+  float hum = dht.readHumidity();
+  float temp = dht.readTemperature();
+  if (isnan(hum) || isnan(temp)) { hum = 50.0; temp = 25.0; }
+  
+  // Hardware-level Smoothing: Average 10 rapid readings
+  long pmSum = 0, coSum = 0, vocSum = 0;
+  for(int i = 0; i < 10; i++) {
+    digitalWrite(LEDPIN, LOW);
+    delayMicroseconds(280);
+    pmSum += analogRead(PMPIN);
+    delayMicroseconds(40);
+    digitalWrite(LEDPIN, HIGH);
+    delayMicroseconds(9680);
+    
+    coSum += analogRead(COPIN);
+    vocSum += analogRead(VOCPIN);
+  }
+  
+  // Software-level Smoothing
+  if (smoothPM == 0) {
+    smoothPM = pmSum / 10.0;
+    smoothCO = coSum / 10.0;
+    smoothVOC = vocSum / 10.0;
+  } else {
+    // Heavy smoothing (95% old, 5% new) for very gradual transitions
+    smoothPM = (smoothPM * 0.95) + ((pmSum / 10.0) * 0.05);
+    smoothCO = (smoothCO * 0.95) + ((coSum / 10.0) * 0.05);
+    smoothVOC = (smoothVOC * 0.95) + ((vocSum / 10.0) * 0.05);
+  }
+  
+  // Temp & Humidity Compensation for MQ Sensors
+  float compFactor = 1.0;
+  if (temp >= 20.0) compFactor -= (temp - 20) * 0.01;
+  else compFactor += (20 - temp) * 0.01;
+  if (hum >= 33.0) compFactor -= (hum - 33) * 0.005;
+  else compFactor += (33 - hum) * 0.005;
+  
+  float compCO = max(1.0f, smoothCO * compFactor); 
+  float compVOC = max(1.0f, smoothVOC * compFactor);
+
+  // Fix Dust Density Output (Standard Sharp Correction)
+  // Ensure we subtract 0.6V correctly before scaling by 170.
+  float calcVoltage = smoothPM * (5.0 / 1024.0);
+  float dustDensity = 0.0;
+  // Ignore garbage voltage spikes > 4.0V
+  if (calcVoltage > 0.4 && calcVoltage < 4.0) { 
+    dustDensity = (calcVoltage - 0.4) * 170.0; // ug/m3 
+  }
+
+  // Calculate CO and VOC concentrations in PPM using dynamic Ro
+  // Constrain voltage heavily between 0.1V and 4.8V to mathematically 
+  // prevent 'Infinite' or 'Garbage 0' values during electrical noise spikes
+  float volCO = max(0.1f, min(4.8f, (compCO / 1024.0) * 5.0));
+  float volVOC = max(0.1f, min(4.8f, (compVOC / 1024.0) * 5.0));
+  
+  float rsCO = (5.0 - volCO) / volCO;
+  float rsVOC = (5.0 - volVOC) / volVOC;
+
+  float ratioCO = max(0.1f, rsCO / roCO);
+  float ratioVOC = max(0.1f, rsVOC / roVOC);
+  
+  // Corrected PPM Math
+  float ppmCO = 100.0 * pow(ratioCO, -1.5);
+  float ppmVOC = 110.0 * pow(ratioVOC, -2.8);
+
+  // US EPA Standard AQI Conversions
+  // --- PM2.5 AQI Breakpoints ---
+  int aqiPM = 0;
+  if (dustDensity <= 12.0) aqiPM = map((long)(dustDensity*10), 0, 120, 0, 50);
+  else if (dustDensity <= 35.4) aqiPM = map((long)(dustDensity*10), 121, 354, 51, 100);
+  else if (dustDensity <= 55.4) aqiPM = map((long)(dustDensity*10), 355, 554, 101, 150);
+  else if (dustDensity <= 150.4) aqiPM = map((long)(dustDensity*10), 555, 1504, 151, 200);
+  else if (dustDensity <= 250.4) aqiPM = map((long)(dustDensity*10), 1505, 2504, 201, 300);
+  else aqiPM = map((long)(dustDensity*10), 2505, 5000, 301, 500);
+  
+  // --- CO AQI Breakpoints ---
+  int aqiCO = 0;
+  if (ppmCO <= 4.4) aqiCO = map((long)(ppmCO*10), 0, 44, 0, 50);
+  else if (ppmCO <= 9.4) aqiCO = map((long)(ppmCO*10), 45, 94, 51, 100);
+  else if (ppmCO <= 12.4) aqiCO = map((long)(ppmCO*10), 95, 124, 101, 150);
+  else if (ppmCO <= 15.4) aqiCO = map((long)(ppmCO*10), 125, 154, 151, 200);
+  else if (ppmCO <= 30.4) aqiCO = map((long)(ppmCO*10), 155, 304, 201, 300);
+  else aqiCO = map((long)(ppmCO*10), 305, 500, 301, 500);
+
+  // --- VOC AQI Assessment ---
+  int aqiVOC = 0; 
+  if (ppmVOC <= 1.0) aqiVOC = map((long)(ppmVOC*100), 0, 100, 0, 50);
+  else if (ppmVOC <= 3.0) aqiVOC = map((long)(ppmVOC*100), 101, 300, 51, 100);
+  else if (ppmVOC <= 6.0) aqiVOC = map((long)(ppmVOC*100), 301, 600, 101, 150);
+  else aqiVOC = map((long)(ppmVOC*100), 601, 2000, 151, 300);
+
+  // Constrain limits
+  aqiCO = constrain(aqiCO, 0, 500);
+  aqiVOC = constrain(aqiVOC, 0, 500);
+  aqiPM = constrain(aqiPM, 0, 500);
+  
+  // Final composite score
+  int overallAQI = max(aqiPM, max(aqiCO, aqiVOC));
+  
+  const __FlashStringHelper* aqiLevel = F("Good");
+  if(overallAQI > 300) aqiLevel = F("Hazardous");
+  else if(overallAQI > 200) aqiLevel = F("V Unhealthy");
+  else if(overallAQI > 150) aqiLevel = F("Unhealthy");
+  else if(overallAQI > 100) aqiLevel = F("Unhealthy(S)");
+  else if(overallAQI > 50) aqiLevel = F("Moderate");
+
+  // --- SMS Notification Logic ---
+  String currentLevel = String(aqiLevel);
+  // Send SMS on startup (after 1 min) and whenever the level category changes
+  if (currentLevel != lastAqiLevel && currentMillis > 60000) {
+    String precaution = "";
+    if (overallAQI <= 50) precaution = "Safe. Enjoy outdoors.";
+    else if (overallAQI <= 100) precaution = "Acceptable. Sensitive groups limit exertion.";
+    else if (overallAQI <= 150) precaution = "Unhealthy for sensitive groups. Reduce outdoor time.";
+    else if (overallAQI <= 200) precaution = "Unhealthy. Everyone reduce outdoor exertion.";
+    else if (overallAQI <= 300) precaution = "V Unhealthy. Avoid outdoor activities.";
+    else precaution = "Hazardous. Stay indoors, keep windows closed.";
+
+    sendSMS(overallAQI, currentLevel, precaution);
+    lastAqiLevel = currentLevel;
+  }
+  // ------------------------------
+
+  // Switch display every 10 seconds (increased from 5)
+  if (currentMillis - prevMillis >= 10000) {
+    prevMillis = currentMillis;
+    showSlide2 = !showSlide2;
+    lcd.clear();
+  }
+  
+  if (!showSlide2) {
+    lcd.setCursor(0, 0); lcd.print(F("AQI: ")); lcd.print(overallAQI); lcd.print(' '); lcd.print(aqiLevel);
+    
+    // Now displaying exact PPM / UG values with proper units
+    lcd.setCursor(0, 1); lcd.print(F("PM:")); lcd.print(dustDensity, 1); lcd.print(F("ug/m3"));
+    lcd.setCursor(0, 2); lcd.print(F("CO:")); lcd.print(ppmCO, 1); lcd.print(F("ppm"));
+    lcd.setCursor(0, 3); lcd.print(F("VC:")); lcd.print(ppmVOC, 1); lcd.print(F("ppm"));
+  } else {
+    lcd.setCursor(0, 0); lcd.print(F("Temp: ")); lcd.print(temp, 1); lcd.print((char)223); lcd.print('C');
+    lcd.setCursor(0, 1); lcd.print(F("Hum:  ")); lcd.print(hum, 1); lcd.print('%');
+    
+    // Increased precision to properly display fractions below 0.1
+    lcd.setCursor(0, 2); lcd.print(F("RO CO: ")); lcd.print(roCO, 2);
+    lcd.setCursor(0, 3); lcd.print(F("RO VOC:")); lcd.print(roVOC, 2);
+  }
+  
+  delay(400); 
+}
